@@ -1,0 +1,1106 @@
+diff --git a/RELEASE_ZIP_INSTRUCTIONS.md b/RELEASE_ZIP_INSTRUCTIONS.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..118a9bd54bc53b61e6f56308f7e0e2dd27c40e25
+--- /dev/null
++++ b/RELEASE_ZIP_INSTRUCTIONS.md
+@@ -0,0 +1,35 @@
++# Exportar ZIP y subir a GitHub
++
++## ZIP generado
++Se generó en:
++
++`releases/SendMessage_gamerhub.zip`
++
++## Cómo descomprimir
++```bash
++unzip releases/SendMessage_gamerhub.zip -d SendMessage_gamerhub
++```
++
++## Cómo subir a GitHub desde la carpeta descomprimida
++```bash
++cd SendMessage_gamerhub
++git init
++git add .
++git commit -m "Initial GamerHub import"
++git branch -M main
++git remote add origin https://github.com/TU_USUARIO/TU_REPO.git
++git push -u origin main
++```
++
++## Opción alternativa (sin descomprimir)
++También puedes usar este repo actual directamente:
++```bash
++git remote add origin https://github.com/TU_USUARIO/TU_REPO.git
++git push -u origin HEAD:main
++```
++
++
++## Extracción en 1 comando
++```bash
++./extract_release.sh
++```
+diff --git a/app/(tabs)/_layout.tsx b/app/(tabs)/_layout.tsx
+index 08fb54963f06247605a5d0b121f635940285e194..0e9b49928813ff91b3fab068e7ab0a1001e7d777 100644
+--- a/app/(tabs)/_layout.tsx
++++ b/app/(tabs)/_layout.tsx
+@@ -5,53 +5,53 @@ import { darkPalette, lightPalette, useAppTheme } from '@/src/presentation/theme
+ 
+ export default function TabLayout() {
+   const { isDark } = useAppTheme();
+   const palette = isDark ? darkPalette : lightPalette;
+ 
+   return (
+     <Tabs
+       screenOptions={{
+         tabBarActiveTintColor: palette.accent,
+         tabBarInactiveTintColor: palette.textSecondary,
+         tabBarStyle: {
+           backgroundColor: palette.surface,
+           borderTopColor: palette.border,
+           height: 70,
+           paddingBottom: 8,
+           paddingTop: 8,
+         },
+         tabBarLabelStyle: {
+           fontSize: 12,
+           fontWeight: '600',
+         },
+         headerShown: false,
+       }}>
+       {[
+         { name: 'index', title: 'Chats', icon: 'chatbubble-ellipses' },
+-        { name: 'calls', title: 'Llamadas', icon: 'call' },
+-        { name: 'status', title: 'Estados', icon: 'radio' },
+-        { name: 'store', title: 'Tienda', icon: 'storefront' },
++        { name: 'discover', title: 'Discover', icon: 'compass' },
++        { name: 'squads', title: 'Squads', icon: 'people' },
++        { name: 'events', title: 'Eventos', icon: 'calendar' },
+         { name: 'profile', title: 'Perfil', icon: 'person' },
+       ].map((tab) => (
+         <Tabs.Screen
+           key={tab.name}
+           name={tab.name}
+           options={{
+             title: tab.title,
+             tabBarIcon: ({ color, focused }) => (
+               <View
+                 style={{
+                   width: 32,
+                   height: 32,
+                   borderRadius: 16,
+                   alignItems: 'center',
+                   justifyContent: 'center',
+                   backgroundColor: focused ? (isDark ? '#223956' : '#E8F2FF') : 'transparent',
+                 }}>
+                 <Ionicons size={20} name={tab.icon as any} color={color} />
+               </View>
+             ),
+           }}
+         />
+       ))}
+     </Tabs>
+   );
+diff --git a/app/(tabs)/discover.tsx b/app/(tabs)/discover.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..a83c4833b4ab91bea25afc68d4aa31e19df0dc73
+--- /dev/null
++++ b/app/(tabs)/discover.tsx
+@@ -0,0 +1,180 @@
++import { useCallback, useEffect, useMemo, useState } from 'react';
++import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
++import { SafeAreaView } from 'react-native-safe-area-context';
++import { useAuth } from '@/src/features/auth/hooks/useAuth';
++import { createDiscoverProfile, listDiscoverProfiles } from '@/src/features/gaming/services/discoverService';
++import { buildFreeSquadTip } from '@/src/features/gaming/services/aiCoachService';
++import { topMatches } from '@/src/features/gaming/services/matchmakingService';
++import { getDailyMissions } from '@/src/features/gaming/services/engagementService';
++import { GamerProfile } from '@/src/features/gaming/types';
++import { useDebouncedValue } from '@/src/features/gaming/pro/useDebouncedValue';
++import { getProfileCompleteness } from '@/src/features/gaming/pro/profileCompleteness';
++import { hasToxicText } from '@/src/features/gaming/pro/toxicityGuard';
++import { getPingTier } from '@/src/features/gaming/pro/pingTier';
++import { buildSessionPlan } from '@/src/features/gaming/pro/sessionPlanner';
++import { cacheProfiles, readCachedProfiles } from '@/src/features/gaming/pro/cacheProfiles';
++import { getMockLeaderboard } from '@/src/features/gaming/pro/leaderboardService';
++import { gamingFlags } from '@/src/features/gaming/pro/featureFlags';
++import { explainPercent } from '@/src/features/gaming/pro/recommendationText';
++import { trackGamingEvent } from '@/src/features/gaming/pro/analytics';
++
++
++export default function DiscoverScreen() {
++  const { user } = useAuth();
++  const [profiles, setProfiles] = useState<GamerProfile[]>([]);
++  const [loading, setLoading] = useState(false);
++  const [error, setError] = useState<string | null>(null);
++  const [form, setForm] = useState({ gamerTag: '', favoriteGame: '', rank: '', role: '', region: '' });
++  const debouncedGame = useDebouncedValue(form.favoriteGame, 250);
++
++  const load = useCallback(async () => {
++    setLoading(true);
++    setError(null);
++    try {
++      const result = await listDiscoverProfiles(user?.idToken);
++      setProfiles(result);
++      void cacheProfiles(result);
++    } catch (err) {
++      setError(err instanceof Error ? err.message : 'No se pudieron cargar perfiles.');
++    } finally {
++      setLoading(false);
++    }
++  }, [user?.idToken]);
++
++  useEffect(() => {
++    void load();
++    void readCachedProfiles().then((cached) => { if (cached.length > 0) setProfiles((prev) => (prev.length ? prev : cached)); });
++  }, [load]);
++
++  const canSubmit = useMemo(() => Object.values(form).every((value) => value.trim().length >= 2), [form]);
++  const completeness = useMemo(() => getProfileCompleteness(form), [form]);
++  const pingTier = useMemo(() => getPingTier(form.region || 'LATAM'), [form.region]);
++  const sessionPlan = useMemo(() => buildSessionPlan(form.rank || 'silver'), [form.rank]);
++  const leaderboard = useMemo(() => getMockLeaderboard(), []);
++  const tip = useMemo(() => buildFreeSquadTip({
++    favoriteGame: form.favoriteGame || profiles[0]?.favoriteGame || 'Valorant',
++    rank: form.rank || profiles[0]?.rank || 'Silver',
++    role: form.role || profiles[0]?.role || 'Flex',
++    region: form.region || profiles[0]?.region || 'LATAM',
++  }), [form.favoriteGame, form.rank, form.region, form.role, profiles]);
++
++
++  const matches = useMemo(() => topMatches({
++    favoriteGame: form.favoriteGame || 'Valorant',
++    rank: form.rank || 'Silver',
++    role: form.role || 'Flex',
++    region: form.region || 'LATAM',
++  }, profiles), [form.favoriteGame, form.rank, form.region, form.role, profiles]);
++
++
++  const missions = useMemo(() => {
++    const todaySeed = Number(new Date().toISOString().slice(0, 10).replace(/-/g, ''));
++    return getDailyMissions(todaySeed, 2);
++  }, []);
++
++  const create = async () => {
++    if (!user?.idToken) return setError('Inicia sesión para crear perfiles.');
++    if (gamingFlags.toxicityGuard && hasToxicText(form.gamerTag + ' ' + form.role)) return setError('Lenguaje no permitido en perfil.');
++    if (!canSubmit) return setError('Completa todos los campos (mínimo 2 caracteres).');
++
++    setLoading(true);
++    setError(null);
++    try {
++      await createDiscoverProfile({ ...form, favoriteGame: debouncedGame || form.favoriteGame, platform: 'PC' }, user.idToken);
++      trackGamingEvent('profile_created', { region: form.region, rank: form.rank, completeness });
++      setForm({ gamerTag: '', favoriteGame: '', rank: '', role: '', region: '' });
++      await load();
++    } catch (err) {
++      setError(err instanceof Error ? err.message : 'No se pudo crear el perfil gamer.');
++    } finally {
++      setLoading(false);
++    }
++  };
++
++  return (
++    <SafeAreaView style={styles.container}>
++      <Text style={styles.title}>Discover gamers</Text>
++      <View style={styles.formCard}>
++        <TextInput placeholder="GamerTag" value={form.gamerTag} onChangeText={(v) => setForm((p) => ({ ...p, gamerTag: v }))} style={styles.input} />
++        <TextInput placeholder="Juego" value={form.favoriteGame} onChangeText={(v) => setForm((p) => ({ ...p, favoriteGame: v }))} style={styles.input} />
++        <TextInput placeholder="Rango" value={form.rank} onChangeText={(v) => setForm((p) => ({ ...p, rank: v }))} style={styles.input} />
++        <TextInput placeholder="Rol" value={form.role} onChangeText={(v) => setForm((p) => ({ ...p, role: v }))} style={styles.input} />
++        <TextInput placeholder="Región" value={form.region} onChangeText={(v) => setForm((p) => ({ ...p, region: v }))} style={styles.input} />
++        <Pressable style={[styles.button, !canSubmit && styles.buttonDisabled]} disabled={!canSubmit || loading} onPress={create}><Text style={styles.buttonText}>Crear perfil</Text></Pressable>
++      </View>
++
++      {error ? <Text style={styles.error}>{error}</Text> : null}
++      {loading ? <ActivityIndicator style={{ marginTop: 10 }} /> : null}
++
++      <View style={styles.tipCard}>
++        <Text style={styles.tipTitle}>AI Coach (gratis, local)</Text>
++        <Text style={styles.tipSummary}>{tip.summary}</Text>
++        {tip.recommendations.map((item) => (
++          <Text key={item} style={styles.tipItem}>• {item}</Text>
++        ))}
++      </View>
++
++
++
++      <View style={styles.tipCard}>
++        <Text style={styles.tipTitle}>Top matches (gratis)</Text>
++        {matches.length === 0 ? <Text style={styles.tipItem}>Sin candidatos todavía.</Text> : matches.map((match) => (
++          <Text key={match.profile.id} style={styles.tipItem}>• {match.profile.gamerTag}: {match.score}% {explainPercent(match.score)} ({match.reasons.join(', ')})</Text>
++        ))}
++      </View>
++
++
++
++      <View style={styles.tipCard}>
++        <Text style={styles.tipTitle}>Misiones diarias</Text>
++        {missions.map((mission) => (
++          <Text key={mission.id} style={styles.tipItem}>• {mission.title} — {mission.reward}</Text>
++        ))}
++      </View>
++
++
++      <View style={styles.tipCard}>
++        <Text style={styles.tipTitle}>Perfil pro</Text>
++        <Text style={styles.tipItem}>Completitud: {completeness}%</Text>
++        <Text style={styles.tipItem}>Ping esperado: {pingTier}</Text>
++        <Text style={styles.tipItem}>Plan de sesión: {sessionPlan.join(' · ')}</Text>
++      </View>
++
++      {gamingFlags.leaderboard ? <View style={styles.tipCard}>
++        <Text style={styles.tipTitle}>Leaderboard semanal</Text>
++        {leaderboard.map((row) => <Text key={row.gamerTag} style={styles.tipItem}>• {row.gamerTag} — {row.points} pts</Text>)}
++      </View> : null}
++
++      <FlatList
++        data={profiles}
++        keyExtractor={(item) => item.id}
++        contentContainerStyle={styles.list}
++        renderItem={({ item }) => (
++          <View style={styles.card}>
++            <Text style={styles.tag}>{item.gamerTag}</Text>
++            <Text>{item.favoriteGame} · {item.rank}</Text>
++            <Text>{item.role} · {item.region}</Text>
++          </View>
++        )}
++      />
++    </SafeAreaView>
++  );
++}
++
++const styles = StyleSheet.create({
++  container: { flex: 1, backgroundColor: '#FFF' },
++  title: { fontSize: 28, fontWeight: '800', marginHorizontal: 16, marginVertical: 12 },
++  formCard: { marginHorizontal: 16, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 10, gap: 8 },
++  input: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10, padding: 10 },
++  button: { backgroundColor: '#2563EB', borderRadius: 10, padding: 11, alignItems: 'center' },
++  buttonDisabled: { opacity: 0.45 },
++  buttonText: { color: '#FFF', fontWeight: '700' },
++  error: { color: '#B91C1C', marginHorizontal: 16, marginTop: 8 },
++  list: { paddingHorizontal: 16, paddingBottom: 100, gap: 10, paddingTop: 12 },
++  card: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 12, gap: 4 },
++  tag: { fontSize: 16, fontWeight: '700' },
++  tipCard: { marginHorizontal: 16, marginTop: 10, backgroundColor: '#EEF6FF', borderRadius: 12, padding: 12, gap: 4 },
++  tipTitle: { fontWeight: '800', color: '#1D4ED8' },
++  tipSummary: { fontWeight: '600', color: '#1E3A8A' },
++  tipItem: { color: '#1F2937' },
++});
+diff --git a/app/(tabs)/events.tsx b/app/(tabs)/events.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..a5e1527f9d0d8a21e34426a10aff0d2f902880f1
+--- /dev/null
++++ b/app/(tabs)/events.tsx
+@@ -0,0 +1,67 @@
++import { useCallback, useEffect, useMemo, useState } from 'react';
++import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
++import { SafeAreaView } from 'react-native-safe-area-context';
++import { useAuth } from '@/src/features/auth/hooks/useAuth';
++import { createEvent, listEvents } from '@/src/features/gaming/services/eventService';
++import { GameEvent } from '@/src/features/gaming/types';
++
++export default function EventsScreen() {
++  const { user } = useAuth();
++  const [events, setEvents] = useState<GameEvent[]>([]);
++  const [loading, setLoading] = useState(false);
++  const [error, setError] = useState<string | null>(null);
++  const [form, setForm] = useState({ title: '', game: '', mode: '', slots: '10', startsAt: '' });
++
++  const load = useCallback(async () => {
++    setLoading(true);
++    setError(null);
++    try { setEvents(await listEvents(user?.idToken)); } catch (err) {
++      setError(err instanceof Error ? err.message : 'No se pudieron cargar eventos.');
++    } finally { setLoading(false); }
++  }, [user?.idToken]);
++
++  useEffect(() => { void load(); }, [load]);
++
++  const canSubmit = useMemo(() => form.title && form.game && form.mode && form.slots, [form]);
++
++  const create = async () => {
++    if (!user?.idToken) return setError('Inicia sesión para crear eventos.');
++    const slots = Number(form.slots);
++    if (!canSubmit || !Number.isFinite(slots) || slots < 2) return setError('Completa formulario y slots válido (>=2).');
++
++    const startsAt = form.startsAt.trim() || new Date().toISOString();
++
++    setLoading(true);
++    try {
++      await createEvent({ title: form.title, game: form.game, mode: form.mode, slots, startsAt }, user.idToken);
++      setForm({ title: '', game: '', mode: '', slots: '10', startsAt: '' });
++      await load();
++    } catch (err) {
++      setError(err instanceof Error ? err.message : 'No se pudo crear evento.');
++    } finally { setLoading(false); }
++  };
++
++  return <SafeAreaView style={styles.container}><Text style={styles.title}>Eventos</Text>
++    <View style={styles.formCard}>
++      <TextInput placeholder="Título" value={form.title} onChangeText={(v) => setForm((p) => ({ ...p, title: v }))} style={styles.input} />
++      <TextInput placeholder="Juego" value={form.game} onChangeText={(v) => setForm((p) => ({ ...p, game: v }))} style={styles.input} />
++      <TextInput placeholder="Modo (5v5, Duo...)" value={form.mode} onChangeText={(v) => setForm((p) => ({ ...p, mode: v }))} style={styles.input} />
++      <TextInput placeholder="Slots" keyboardType="number-pad" value={form.slots} onChangeText={(v) => setForm((p) => ({ ...p, slots: v }))} style={styles.input} />
++      <TextInput placeholder="Fecha ISO opcional" value={form.startsAt} onChangeText={(v) => setForm((p) => ({ ...p, startsAt: v }))} style={styles.input} />
++      <Pressable style={[styles.button, !canSubmit && styles.buttonDisabled]} disabled={!canSubmit || loading} onPress={create}><Text style={styles.buttonText}>Crear evento</Text></Pressable>
++    </View>
++    {error ? <Text style={styles.error}>{error}</Text> : null}
++    {loading ? <ActivityIndicator style={{ marginTop: 10 }} /> : null}
++    <FlatList data={events} keyExtractor={(i) => i.id} contentContainerStyle={styles.list}
++      renderItem={({ item }) => <View style={styles.card}><Text style={styles.name}>{item.title}</Text><Text>{item.game} · {item.mode}</Text><Text>{item.slots} slots</Text></View>} />
++  </SafeAreaView>;
++}
++
++const styles = StyleSheet.create({
++  container: { flex: 1, backgroundColor: '#FFF' }, title: { fontSize: 28, fontWeight: '800', marginHorizontal: 16, marginVertical: 12 },
++  formCard: { marginHorizontal: 16, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 10, gap: 8 },
++  input: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10, padding: 10 },
++  button: { backgroundColor: '#2563EB', borderRadius: 10, padding: 11, alignItems: 'center' }, buttonDisabled: { opacity: 0.45 }, buttonText: { color: '#FFF', fontWeight: '700' },
++  error: { color: '#B91C1C', marginHorizontal: 16, marginTop: 8 }, list: { paddingHorizontal: 16, paddingBottom: 100, gap: 10, paddingTop: 12 },
++  card: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 12, gap: 4 }, name: { fontSize: 16, fontWeight: '700' },
++});
+diff --git a/app/(tabs)/squads.tsx b/app/(tabs)/squads.tsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..7ed10c50b7ef6d4209b5751f6d760d2dc76315c0
+--- /dev/null
++++ b/app/(tabs)/squads.tsx
+@@ -0,0 +1,70 @@
++import { useCallback, useEffect, useMemo, useState } from 'react';
++import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
++import { SafeAreaView } from 'react-native-safe-area-context';
++import { useAuth } from '@/src/features/auth/hooks/useAuth';
++import { createSquad, listSquads } from '@/src/features/gaming/services/squadService';
++import { Squad } from '@/src/features/gaming/types';
++
++export default function SquadsScreen() {
++  const { user } = useAuth();
++  const [squads, setSquads] = useState<Squad[]>([]);
++  const [loading, setLoading] = useState(false);
++  const [error, setError] = useState<string | null>(null);
++  const [form, setForm] = useState({ name: '', game: '', neededRole: '', maxMembers: '5' });
++
++  const load = useCallback(async () => {
++    setLoading(true);
++    setError(null);
++    try {
++      setSquads(await listSquads(user?.idToken));
++    } catch (err) {
++      setError(err instanceof Error ? err.message : 'No se pudieron cargar squads.');
++    } finally {
++      setLoading(false);
++    }
++  }, [user?.idToken]);
++
++  useEffect(() => { void load(); }, [load]);
++
++  const canSubmit = useMemo(() => form.name.trim().length > 2 && form.game.trim().length > 1 && form.neededRole.trim().length > 1, [form]);
++
++  const create = async () => {
++    if (!user?.idToken) return setError('Inicia sesión para crear squads.');
++    if (!canSubmit) return setError('Completa todos los campos del squad.');
++
++    const maxMembers = Number(form.maxMembers);
++    if (!Number.isFinite(maxMembers) || maxMembers < 2 || maxMembers > 20) return setError('maxMembers debe estar entre 2 y 20.');
++
++    setLoading(true);
++    try {
++      await createSquad({ name: form.name, game: form.game, neededRole: form.neededRole, currentMembers: 1, maxMembers }, user.idToken);
++      setForm({ name: '', game: '', neededRole: '', maxMembers: '5' });
++      await load();
++    } catch (err) {
++      setError(err instanceof Error ? err.message : 'No se pudo crear el squad.');
++    } finally { setLoading(false); }
++  };
++
++  return <SafeAreaView style={styles.container}><Text style={styles.title}>Squads</Text>
++    <View style={styles.formCard}>
++      <TextInput placeholder="Nombre" value={form.name} onChangeText={(v) => setForm((p) => ({ ...p, name: v }))} style={styles.input} />
++      <TextInput placeholder="Juego" value={form.game} onChangeText={(v) => setForm((p) => ({ ...p, game: v }))} style={styles.input} />
++      <TextInput placeholder="Rol requerido" value={form.neededRole} onChangeText={(v) => setForm((p) => ({ ...p, neededRole: v }))} style={styles.input} />
++      <TextInput placeholder="Máximo miembros (2-20)" keyboardType="number-pad" value={form.maxMembers} onChangeText={(v) => setForm((p) => ({ ...p, maxMembers: v }))} style={styles.input} />
++      <Pressable style={[styles.button, !canSubmit && styles.buttonDisabled]} disabled={!canSubmit || loading} onPress={create}><Text style={styles.buttonText}>Crear squad</Text></Pressable>
++    </View>
++    {error ? <Text style={styles.error}>{error}</Text> : null}
++    {loading ? <ActivityIndicator style={{ marginTop: 10 }} /> : null}
++    <FlatList data={squads} keyExtractor={(i) => i.id} contentContainerStyle={styles.list}
++      renderItem={({ item }) => <View style={styles.card}><Text style={styles.name}>{item.name}</Text><Text>{item.game} · Buscan {item.neededRole}</Text><Text>{item.currentMembers}/{item.maxMembers}</Text></View>} />
++  </SafeAreaView>;
++}
++
++const styles = StyleSheet.create({
++  container: { flex: 1, backgroundColor: '#FFF' }, title: { fontSize: 28, fontWeight: '800', marginHorizontal: 16, marginVertical: 12 },
++  formCard: { marginHorizontal: 16, borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 10, gap: 8 },
++  input: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10, padding: 10 },
++  button: { backgroundColor: '#2563EB', borderRadius: 10, padding: 11, alignItems: 'center' }, buttonDisabled: { opacity: 0.45 }, buttonText: { color: '#FFF', fontWeight: '700' },
++  error: { color: '#B91C1C', marginHorizontal: 16, marginTop: 8 }, list: { paddingHorizontal: 16, paddingBottom: 100, gap: 10, paddingTop: 12 },
++  card: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 12, gap: 4 }, name: { fontSize: 16, fontWeight: '700' },
++});
+diff --git a/docs_gamer_app_plan.md b/docs_gamer_app_plan.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..0cff9077e9361257b6c66a3c184fe6d0ea393dba
+--- /dev/null
++++ b/docs_gamer_app_plan.md
+@@ -0,0 +1,184 @@
++# GamerHub — Plan de app de gamers (de 0 a fin)
++
++## 1) Idea de producto
++**GamerHub**: app social para gamers donde puedes:
++- crear tu perfil gamer (plataformas, rangos, juegos favoritos),
++- encontrar teammates por juego/rol/rango,
++- crear squads y eventos (scrims, rankeds, torneos internos),
++- chat en tiempo real por squad y por evento,
++- sistema de reputación anti-toxicidad,
++- mini tienda interna (skins virtuales de perfil, stickers, etc.).
++
++---
++
++## 2) MVP (versión 1) — lo mínimo para lanzar
++1. Registro / login.
++2. Perfil gamer.
++3. Búsqueda de jugadores.
++4. Crear squad.
++5. Chat 1:1 y grupal.
++6. Crear eventos.
++7. Notificaciones push.
++
++---
++
++## 3) Stack recomendado para probar Codex rápido
++Como este repo ya usa **Expo + React Native + Firebase**, te conviene seguir ahí:
++- **Frontend móvil**: Expo Router + React Native + TypeScript.
++- **Estado**: Zustand o Redux Toolkit.
++- **Backend BaaS**: Firebase Auth + Firestore + Cloud Functions + Storage.
++- **Push notifications**: Expo Notifications / FCM.
++- **Analítica**: Firebase Analytics.
++
++---
++
++## 4) Separación de carpetas recomendada
++Estructura sugerida (escalable y clara):
++
++```txt
++app/
++  (auth)/
++    login.tsx
++    register.tsx
++  (tabs)/
++    home.tsx
++    squads.tsx
++    discover.tsx
++    events.tsx
++    profile.tsx
++  chat/
++    [chatId].tsx
++    new.tsx
++  squad/
++    [squadId].tsx
++    create.tsx
++  event/
++    [eventId].tsx
++    create.tsx
++  _layout.tsx
++
++src/
++  components/
++    ui/
++    forms/
++    cards/
++    chat/
++  features/
++    auth/
++      hooks/
++      services/
++      types/
++    profile/
++      hooks/
++      services/
++      types/
++    squads/
++      hooks/
++      services/
++      types/
++    chat/
++      hooks/
++      services/
++      types/
++    events/
++      hooks/
++      services/
++      types/
++  store/
++    auth.store.ts
++    squads.store.ts
++    chat.store.ts
++  lib/
++    firebase/
++      client.ts
++      auth.ts
++      firestore.ts
++      storage.ts
++    utils/
++      date.ts
++      validation.ts
++  config/
++    env.ts
++    constants.ts
++  theme/
++    colors.ts
++    spacing.ts
++  types/
++    index.ts
++
++functions/
++  src/
++    matchmaking/
++    moderation/
++    notifications/
++    index.ts
++
++assets/
++  images/
++  icons/
++  sounds/
++```
++
++---
++
++## 5) Modelo de datos base (Firestore)
++Colecciones sugeridas:
++- `users`
++- `profiles`
++- `games`
++- `squads`
++- `squadMembers`
++- `events`
++- `chats`
++- `messages`
++- `reports`
++- `ratings`
++
++Ejemplo `profiles/{userId}`:
++```json
++{
++  "displayName": "NeoPlayer",
++  "platforms": ["PC", "PS5"],
++  "games": [
++    { "id": "valorant", "rank": "Diamond", "roles": ["Duelist"] },
++    { "id": "warzone", "rank": "Crimson", "roles": ["IGL"] }
++  ],
++  "language": ["es", "en"],
++  "region": "LATAM",
++  "reputation": 4.7,
++  "createdAt": "serverTimestamp"
++}
++```
++
++---
++
++## 6) Roadmap por fases
++### Fase 1 (1–2 semanas)
++- Auth + perfil + navegación base.
++- CRUD de squads.
++- Chat básico.
++
++### Fase 2 (2–3 semanas)
++- Matchmaking por filtros.
++- Eventos y recordatorios.
++- Notificaciones push.
++
++### Fase 3 (2 semanas)
++- Reputación y reportes.
++- Moderación automática básica en mensajes.
++- Mejoras UX/UI.
++
++### Fase 4 (continuo)
++- Rankings, torneos, monetización, panel admin.
++
++---
++
++## 7) Siguientes pasos concretos para Codex
++1. Crear rutas nuevas `(auth)`, `squad`, `event`, `discover`.
++2. Mover lógica a `src/features/*` por dominio.
++3. Definir tipos (`User`, `Profile`, `Squad`, `Event`, `Message`).
++4. Implementar servicios Firestore por feature.
++5. Agregar reglas de seguridad de Firestore por colección.
++6. Crear seeds de datos de prueba.
++
++Con esto tienes una base de nivel producción para crecer sin desorden.
+diff --git a/docs_gamerhub_pro_ideas.md b/docs_gamerhub_pro_ideas.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..aa82fe0a2ec7bcc53c661c7d57dda49220f72051
+--- /dev/null
++++ b/docs_gamerhub_pro_ideas.md
+@@ -0,0 +1,48 @@
++# GamerHub Pro — ideas para llevarla a nivel 100%
++
++## 1) Matchmaking avanzado (core)
++- Score multi-factor: juego + rank + rol + región + horario disponible + idioma.
++- Peso dinámico por prioridad del usuario (ej. "quiero buen ping" > "quiero mismo rank").
++- Explicabilidad del score: mostrar por qué dio 92%.
++
++## 2) Sistema de reputación robusto
++- Reputación por puntualidad, toxicidad, abandono de partida, feedback post-partida.
++- Ponderar más las reseñas de usuarios confiables.
++- Penalizaciones automáticas temporales por reportes confirmados.
++
++## 3) IA útil y gratis-first
++- AI Coach local (ya implementado) + plan semanal de mejora.
++- Resumen automático de squad/evento para compartir.
++- Sugerencias de horario óptimo según actividad histórica.
++
++## 4) Experiencia de producto premium
++- Onboarding gamer (elige juegos, rango, objetivo, disponibilidad semanal).
++- Perfiles visuales pro con stats y badges.
++- Estado en vivo: "buscando squad ahora" / "en ranked".
++
++## 5) Social y retención
++- Misiones semanales (jugar 3 partidas sin abandono, etc.).
++- Streaks de actividad y recompensas cosméticas.
++- Eventos comunitarios y torneos periódicos.
++
++## 6) Seguridad y moderación
++- Filtro anti-spam en chat.
++- Bloqueo y mute por usuario/squad.
++- Cola de revisión para reportes críticos.
++
++## 7) Observabilidad y crecimiento
++- Métricas clave: D1/D7 retention, conversión a squad, tiempo a primer match.
++- A/B testing de algoritmo de matchmaking.
++- Dashboard admin de salud del producto.
++
++## 8) Arquitectura técnica recomendada (siguiente iteración)
++- Separar `features/gaming` por subdominio: discover, squads, events, matchmaking.
++- Hooks reutilizables: `useDiscover`, `useSquads`, `useEvents`, `useMatchmaking`.
++- Validaciones centralizadas con esquemas (Zod/Yup).
++- Cache y sync offline para listas clave.
++
++## 9) Roadmap sugerido (6 semanas)
++- Semana 1-2: matchmaking avanzado + reputación v1.
++- Semana 3-4: onboarding pro + eventos competitivos + analytics base.
++- Semana 5: moderación y seguridad.
++- Semana 6: performance, polish UI, beta cerrada.
+diff --git a/extract_release.sh b/extract_release.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..446070ad9cfd050e9792f163328999fd9929a9bb
+--- /dev/null
++++ b/extract_release.sh
+@@ -0,0 +1,13 @@
++#!/usr/bin/env bash
++set -euo pipefail
++ZIP_PATH="releases/SendMessage_gamerhub.zip"
++OUT_DIR="SendMessage_gamerhub"
++
++if [ ! -f "$ZIP_PATH" ]; then
++  echo "No se encontró $ZIP_PATH"
++  exit 1
++fi
++
++rm -rf "$OUT_DIR"
++unzip -q "$ZIP_PATH" -d "$OUT_DIR"
++echo "Listo. Proyecto extraído en: $OUT_DIR"
+diff --git a/src/features/gaming/pro/analytics.ts b/src/features/gaming/pro/analytics.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..b5fd5bd99a751347905ba1f438bceebd4feedd28
+--- /dev/null
++++ b/src/features/gaming/pro/analytics.ts
+@@ -0,0 +1,3 @@
++export function trackGamingEvent(event: string, payload?: Record<string, unknown>) {
++  console.log('[gaming.analytics]', event, payload ?? {});
++}
+diff --git a/src/features/gaming/pro/cacheProfiles.ts b/src/features/gaming/pro/cacheProfiles.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..7d300e760aa72b11551776451a2c7b8cd065977d
+--- /dev/null
++++ b/src/features/gaming/pro/cacheProfiles.ts
+@@ -0,0 +1,5 @@
++import AsyncStorage from '@react-native-async-storage/async-storage';
++import { GamerProfile } from '../types';
++const KEY='gamerhub.cachedProfiles';
++export async function cacheProfiles(profiles: GamerProfile[]) { await AsyncStorage.setItem(KEY, JSON.stringify(profiles)); }
++export async function readCachedProfiles(): Promise<GamerProfile[]> { const raw=await AsyncStorage.getItem(KEY); return raw?JSON.parse(raw):[]; }
+diff --git a/src/features/gaming/pro/featureFlags.ts b/src/features/gaming/pro/featureFlags.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..c0e838a97f688d40e0bd141258d4c8d869ddb222
+--- /dev/null
++++ b/src/features/gaming/pro/featureFlags.ts
+@@ -0,0 +1 @@
++export const gamingFlags = { leaderboard: true, toxicityGuard: true, sessionPlanner: true, aiCoach: true };
+diff --git a/src/features/gaming/pro/leaderboardService.ts b/src/features/gaming/pro/leaderboardService.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d8cc1c60fe78e45b5bd0873e98ae463719beedf7
+--- /dev/null
++++ b/src/features/gaming/pro/leaderboardService.ts
+@@ -0,0 +1,2 @@
++export type LeaderboardRow={ gamerTag:string; points:number };
++export function getMockLeaderboard(): LeaderboardRow[] { return [{gamerTag:'NeoAim',points:1240},{gamerTag:'LunaCarry',points:1180},{gamerTag:'GhostRush',points:1110}]; }
+diff --git a/src/features/gaming/pro/pingTier.ts b/src/features/gaming/pro/pingTier.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..633aa02227e6bd21e84b3a12a26e110c9160c3ce
+--- /dev/null
++++ b/src/features/gaming/pro/pingTier.ts
+@@ -0,0 +1,5 @@
++export function getPingTier(region: string): 'low' | 'mid' | 'high' {
++  if (['NA', 'LAS'].includes(region.toUpperCase())) return 'low';
++  if (['LATAM', 'EU'].includes(region.toUpperCase())) return 'mid';
++  return 'high';
++}
+diff --git a/src/features/gaming/pro/profileCompleteness.ts b/src/features/gaming/pro/profileCompleteness.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d5f82d5b2670994fdee300ae91149c219e91db34
+--- /dev/null
++++ b/src/features/gaming/pro/profileCompleteness.ts
+@@ -0,0 +1,5 @@
++export function getProfileCompleteness(input: Record<string, string>): number {
++  const keys = Object.keys(input);
++  const complete = keys.filter((k) => input[k]?.trim().length > 1).length;
++  return Math.round((complete / Math.max(1, keys.length)) * 100);
++}
+diff --git a/src/features/gaming/pro/recommendationText.ts b/src/features/gaming/pro/recommendationText.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..11c3165cd887121004b9b416fbdc2843f1586aa2
+--- /dev/null
++++ b/src/features/gaming/pro/recommendationText.ts
+@@ -0,0 +1,6 @@
++export function explainPercent(score: number): string {
++  if (score >= 85) return 'compatibilidad excelente';
++  if (score >= 70) return 'compatibilidad alta';
++  if (score >= 50) return 'compatibilidad media';
++  return 'compatibilidad baja';
++}
+diff --git a/src/features/gaming/pro/sessionPlanner.ts b/src/features/gaming/pro/sessionPlanner.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..46e49b6bb848f7bf7c63c4a9096945c84bf700c0
+--- /dev/null
++++ b/src/features/gaming/pro/sessionPlanner.ts
+@@ -0,0 +1,6 @@
++export function buildSessionPlan(rank: string): string[] {
++  const high = ['diamond', 'ascendant', 'immortal', 'radiant'];
++  return high.includes(rank.toLowerCase())
++    ? ['20m warmup', '3 rankeds', '20m VOD review']
++    : ['15m aim', '2 rankeds', '10m notes'];
++}
+diff --git a/src/features/gaming/pro/toxicityGuard.ts b/src/features/gaming/pro/toxicityGuard.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..833362c1f86878635fb7803d6d5e706184a83717
+--- /dev/null
++++ b/src/features/gaming/pro/toxicityGuard.ts
+@@ -0,0 +1,2 @@
++const banned = ['idiota', 'noob', 'toxico'];
++export function hasToxicText(value: string): boolean { return banned.some((w) => value.toLowerCase().includes(w)); }
+diff --git a/src/features/gaming/pro/useDebouncedValue.ts b/src/features/gaming/pro/useDebouncedValue.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..ccc654fbe00e82e5cae139f885a76f4bb877ead6
+--- /dev/null
++++ b/src/features/gaming/pro/useDebouncedValue.ts
+@@ -0,0 +1,6 @@
++import { useEffect, useState } from 'react';
++export function useDebouncedValue<T>(value: T, delayMs = 300): T {
++  const [debounced, setDebounced] = useState(value);
++  useEffect(() => { const t = setTimeout(() => setDebounced(value), delayMs); return () => clearTimeout(t); }, [value, delayMs]);
++  return debounced;
++}
+diff --git a/src/features/gaming/services/aiCoachService.ts b/src/features/gaming/services/aiCoachService.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f5602bfebbe04cf583181a894643cd61dcb0a555
+--- /dev/null
++++ b/src/features/gaming/services/aiCoachService.ts
+@@ -0,0 +1,26 @@
++import { GamerProfile } from '../types';
++
++export type SquadTip = {
++  summary: string;
++  recommendations: string[];
++};
++
++const rankBuckets: Record<string, number> = {
++  iron: 1, bronze: 2, silver: 3, gold: 4, platinum: 5, diamond: 6, ascendant: 7, immortal: 8, radiant: 9,
++};
++
++export function buildFreeSquadTip(profile: Pick<GamerProfile, 'favoriteGame' | 'rank' | 'role' | 'region'>): SquadTip {
++  const rankScore = rankBuckets[profile.rank.toLowerCase()] ?? 3;
++  const pace = rankScore >= 6 ? 'alto rendimiento' : 'aprendizaje y constancia';
++
++  return {
++    summary: `Para ${profile.favoriteGame}, tu enfoque recomendado es ${pace}.`,
++    recommendations: [
++      `Busca squads de tu región (${profile.region}) para reducir lag y mejorar coordinación.`,
++      `Prioriza equipos que necesiten ${profile.role} para entrar más rápido a partidas.`,
++      rankScore >= 6
++        ? 'Haz VOD review 20 min después de cada sesión y define 1 ajuste por mapa.'
++        : 'Enfócate en mecánicas base (aim/posicionamiento) con bloques de 30 min diarios.',
++    ],
++  };
++}
+diff --git a/src/features/gaming/services/discoverService.ts b/src/features/gaming/services/discoverService.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..6ef95e8fc17bc86fefb7519ccb300ad17b880849
+--- /dev/null
++++ b/src/features/gaming/services/discoverService.ts
+@@ -0,0 +1,42 @@
++import { createDoc, getCollectionDocs } from '@/src/config/firestoreClient';
++import { GamerProfile } from '../types';
++import { getString, stringField } from './firestoreMappers';
++
++const COLLECTION = 'profiles';
++
++const MOCK_PROFILES: GamerProfile[] = [
++  { id: 'p1', gamerTag: 'NeoAim', favoriteGame: 'Valorant', rank: 'Diamond', role: 'Duelist', region: 'LATAM', platform: 'PC' },
++];
++
++export async function listDiscoverProfiles(idToken?: string): Promise<GamerProfile[]> {
++  if (!idToken) return MOCK_PROFILES;
++  const docs = await getCollectionDocs(COLLECTION, idToken);
++
++  return docs.map((doc: any) => {
++    const fields = doc.fields ?? {};
++    return {
++      id: doc.name?.split('/').pop() ?? Math.random().toString(),
++      gamerTag: getString(fields.gamerTag),
++      favoriteGame: getString(fields.favoriteGame),
++      rank: getString(fields.rank),
++      role: getString(fields.role),
++      region: getString(fields.region),
++      platform: (getString(fields.platform) || 'PC') as GamerProfile['platform'],
++    };
++  });
++}
++
++export async function createDiscoverProfile(profile: Omit<GamerProfile, 'id'>, idToken: string) {
++  return createDoc(
++    COLLECTION,
++    {
++      gamerTag: stringField(profile.gamerTag),
++      favoriteGame: stringField(profile.favoriteGame),
++      rank: stringField(profile.rank),
++      role: stringField(profile.role),
++      region: stringField(profile.region),
++      platform: stringField(profile.platform),
++    },
++    idToken,
++  );
++}
+diff --git a/src/features/gaming/services/engagementService.ts b/src/features/gaming/services/engagementService.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..ebab9a62f3bd4a0525846902e66996eacc069c78
+--- /dev/null
++++ b/src/features/gaming/services/engagementService.ts
+@@ -0,0 +1,25 @@
++export type DailyMission = {
++  id: string;
++  title: string;
++  reward: string;
++};
++
++const MISSIONS: DailyMission[] = [
++  { id: 'm1', title: 'Juega 2 partidas con squad', reward: '+20 XP social' },
++  { id: 'm2', title: 'Envía 3 invitaciones de team-up', reward: '+15 reputación' },
++  { id: 'm3', title: 'Completa 1 evento sin abandono', reward: 'Badge Consistente' },
++  { id: 'm4', title: 'Da feedback a 2 compañeros', reward: '+10 karma' },
++];
++
++export function getDailyMissions(seed: number, count = 2): DailyMission[] {
++  const picked: DailyMission[] = [];
++  let cursor = seed % MISSIONS.length;
++
++  while (picked.length < Math.min(count, MISSIONS.length)) {
++    const candidate = MISSIONS[cursor];
++    if (!picked.find((m) => m.id === candidate.id)) picked.push(candidate);
++    cursor = (cursor + 1) % MISSIONS.length;
++  }
++
++  return picked;
++}
+diff --git a/src/features/gaming/services/eventService.ts b/src/features/gaming/services/eventService.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..be024361dd2b273988f99420b39c8896845c9e25
+--- /dev/null
++++ b/src/features/gaming/services/eventService.ts
+@@ -0,0 +1,39 @@
++import { createDoc, getCollectionDocs } from '@/src/config/firestoreClient';
++import { GameEvent } from '../types';
++import { getNumber, getString, stringField } from './firestoreMappers';
++
++const COLLECTION = 'events';
++const MOCK_EVENTS: GameEvent[] = [
++  { id: 'e1', title: 'Scrim nocturna', game: 'Valorant', startsAt: '2026-05-08T01:00:00Z', mode: '5v5', slots: 10 },
++];
++
++export async function listEvents(idToken?: string): Promise<GameEvent[]> {
++  if (!idToken) return MOCK_EVENTS;
++  const docs = await getCollectionDocs(COLLECTION, idToken);
++
++  return docs.map((doc: any) => {
++    const fields = doc.fields ?? {};
++    return {
++      id: doc.name?.split('/').pop() ?? Math.random().toString(),
++      title: getString(fields.title),
++      game: getString(fields.game),
++      startsAt: getString(fields.startsAt),
++      mode: getString(fields.mode),
++      slots: getNumber(fields.slots),
++    };
++  });
++}
++
++export async function createEvent(payload: Omit<GameEvent, 'id'>, idToken: string) {
++  return createDoc(
++    COLLECTION,
++    {
++      title: stringField(payload.title),
++      game: stringField(payload.game),
++      startsAt: stringField(payload.startsAt),
++      mode: stringField(payload.mode),
++      slots: stringField(String(payload.slots)),
++    },
++    idToken,
++  );
++}
+diff --git a/src/features/gaming/services/firestoreMappers.ts b/src/features/gaming/services/firestoreMappers.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d6366ec3c19f7be9e2125ffa0122bc04b5d7528b
+--- /dev/null
++++ b/src/features/gaming/services/firestoreMappers.ts
+@@ -0,0 +1,14 @@
++import { FirestoreValue } from '@/src/config/firestoreClient';
++
++export const getString = (field?: FirestoreValue): string => {
++  if (!field || !('stringValue' in field)) return '';
++  return field.stringValue;
++};
++
++export const getNumber = (field?: FirestoreValue): number => {
++  const value = getString(field);
++  const parsed = Number(value);
++  return Number.isFinite(parsed) ? parsed : 0;
++};
++
++export const stringField = (value: string): FirestoreValue => ({ stringValue: value });
+diff --git a/src/features/gaming/services/matchmakingService.ts b/src/features/gaming/services/matchmakingService.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..990df7e602cd92ed06c3738632c218a720f05287
+--- /dev/null
++++ b/src/features/gaming/services/matchmakingService.ts
+@@ -0,0 +1,45 @@
++import { GamerProfile } from '../types';
++
++export type MatchResult = {
++  profile: GamerProfile;
++  score: number;
++  reasons: string[];
++};
++
++export function scoreCompatibility(me: Pick<GamerProfile, 'favoriteGame' | 'rank' | 'role' | 'region'>, other: GamerProfile): MatchResult {
++  let score = 0;
++  const reasons: string[] = [];
++
++  if (me.favoriteGame.toLowerCase() === other.favoriteGame.toLowerCase()) {
++    score += 40;
++    reasons.push('Mismo juego');
++  }
++
++  if (me.region.toLowerCase() === other.region.toLowerCase()) {
++    score += 25;
++    reasons.push('Misma región');
++  }
++
++  if (me.role.toLowerCase() !== other.role.toLowerCase()) {
++    score += 20;
++    reasons.push('Roles complementarios');
++  } else {
++    score += 10;
++    reasons.push('Mismo rol');
++  }
++
++  const rankDistance = Math.abs(rankToInt(me.rank) - rankToInt(other.rank));
++  score += Math.max(0, 20 - rankDistance * 4);
++  reasons.push(rankDistance <= 1 ? 'Rango similar' : 'Rango compatible');
++
++  return { profile: other, score: Math.min(100, score), reasons };
++}
++
++export function topMatches(me: Pick<GamerProfile, 'favoriteGame' | 'rank' | 'role' | 'region'>, pool: GamerProfile[], limit = 3): MatchResult[] {
++  return pool.map((p) => scoreCompatibility(me, p)).sort((a, b) => b.score - a.score).slice(0, limit);
++}
++
++function rankToInt(rank: string): number {
++  const m: Record<string, number> = { iron: 1, bronze: 2, silver: 3, gold: 4, platinum: 5, diamond: 6, ascendant: 7, immortal: 8, radiant: 9, master: 7 };
++  return m[rank.toLowerCase()] ?? 3;
++}
+diff --git a/src/features/gaming/services/squadService.ts b/src/features/gaming/services/squadService.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..42989f04110c4b0ef01fd54506838faf56631c2a
+--- /dev/null
++++ b/src/features/gaming/services/squadService.ts
+@@ -0,0 +1,39 @@
++import { createDoc, getCollectionDocs } from '@/src/config/firestoreClient';
++import { Squad } from '../types';
++import { getNumber, getString, stringField } from './firestoreMappers';
++
++const COLLECTION = 'squads';
++const MOCK_SQUADS: Squad[] = [
++  { id: 's1', name: 'Night Raiders', game: 'Valorant', neededRole: 'Controller', currentMembers: 4, maxMembers: 5 },
++];
++
++export async function listSquads(idToken?: string): Promise<Squad[]> {
++  if (!idToken) return MOCK_SQUADS;
++  const docs = await getCollectionDocs(COLLECTION, idToken);
++
++  return docs.map((doc: any) => {
++    const fields = doc.fields ?? {};
++    return {
++      id: doc.name?.split('/').pop() ?? Math.random().toString(),
++      name: getString(fields.name),
++      game: getString(fields.game),
++      neededRole: getString(fields.neededRole),
++      currentMembers: getNumber(fields.currentMembers),
++      maxMembers: getNumber(fields.maxMembers),
++    };
++  });
++}
++
++export async function createSquad(payload: Omit<Squad, 'id'>, idToken: string) {
++  return createDoc(
++    COLLECTION,
++    {
++      name: stringField(payload.name),
++      game: stringField(payload.game),
++      neededRole: stringField(payload.neededRole),
++      currentMembers: stringField(String(payload.currentMembers)),
++      maxMembers: stringField(String(payload.maxMembers)),
++    },
++    idToken,
++  );
++}
+diff --git a/src/features/gaming/types.ts b/src/features/gaming/types.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..ceda0730b7b72a8604bb34b9274b20f46b5309a3
+--- /dev/null
++++ b/src/features/gaming/types.ts
+@@ -0,0 +1,27 @@
++export type GamerProfile = {
++  id: string;
++  gamerTag: string;
++  favoriteGame: string;
++  rank: string;
++  role: string;
++  region: string;
++  platform: 'PC' | 'PS5' | 'Xbox';
++};
++
++export type Squad = {
++  id: string;
++  name: string;
++  game: string;
++  neededRole: string;
++  currentMembers: number;
++  maxMembers: number;
++};
++
++export type GameEvent = {
++  id: string;
++  title: string;
++  game: string;
++  startsAt: string;
++  mode: string;
++  slots: number;
++};
