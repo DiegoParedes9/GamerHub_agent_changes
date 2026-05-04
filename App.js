@@ -1,9 +1,5 @@
-import { Text, View } from 'react-native';
+import HomeScreen from './src/features/gaming/screens/HomeScreen';
 
 export default function App() {
-  return (
-    <View>
-      <Text>YA FUNCIONA</Text>
-    </View>
-  );
+  return <HomeScreen />;
 }
