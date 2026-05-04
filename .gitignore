@@ -1,0 +1,30 @@
+# Expo
+.expo/
+dist/
+npm-debug.*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+yarn.lock
+package-lock.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Build
+build/
+.next/
+out/
+
+# Logs
+logs/
+*.log

@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "GamerHub",
+    "slug": "gamerhub",
+    "version": "1.0.0",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.gamerhub.app"
+    },
+    "android": {
+      "package": "com.gamerhub.app"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "scheme": "gamerhub",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ]
+  }
+}
