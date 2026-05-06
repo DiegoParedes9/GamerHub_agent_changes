@@ -1,30 +1,20 @@
 import { ScrollView, View, Text, StyleSheet } from 'react-native';
 
-import Header from '../components/Header';
-import GameCard from '../components/GameCard';
-import StatCard from '../components/StatCard';
-
-import { colors } from '../styles/theme';
-import { activeGames } from '../data/mockData';
-
 export default function HomeScreen() {
   return (
     <ScrollView style={styles.container}>
 
-      <Header />
+      <Text style={styles.logo}>🎮 GamerHub</Text>
 
-      <View style={styles.statsRow}>
-        <StatCard number="124" label="Online" />
-        <StatCard number="32" label="Squads" />
+      <View style={styles.card}>
+        <Text style={styles.title}>🔥 Active Matches</Text>
+        <Text style={styles.subtitle}>CS2 Ranked - 4/5 players</Text>
       </View>
 
-      <Text style={styles.sectionTitle}>
-        🔥 Active Matches
-      </Text>
-
-      {activeGames.map((game) => (
-        <GameCard key={game.id} game={game} />
-      ))}
+      <View style={styles.card}>
+        <Text style={styles.title}>🏆 Tournament</Text>
+        <Text style={styles.subtitle}>FIFA Cup starts in 20 min</Text>
+      </View>
 
     </ScrollView>
   );
@@ -33,19 +23,33 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
-    paddingHorizontal: 18,
+    backgroundColor: '#0B1120',
+    padding: 20,
   },
 
-  statsRow: {
-    flexDirection: 'row',
-    marginBottom: 25,
-  },
-
-  sectionTitle: {
-    color: colors.text,
-    fontSize: 20,
+  logo: {
+    color: '#fff',
+    fontSize: 32,
     fontWeight: 'bold',
+    marginTop: 50,
+    marginBottom: 30,
+  },
+
+  card: {
+    backgroundColor: '#151E2E',
+    padding: 20,
+    borderRadius: 18,
     marginBottom: 15,
+  },
+
+  title: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+
+  subtitle: {
+    color: '#94A3B8',
+    marginTop: 8,
   },
 });

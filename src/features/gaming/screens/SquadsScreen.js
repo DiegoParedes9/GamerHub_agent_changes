@@ -1,9 +1,9 @@
 import { View, Text, StyleSheet } from 'react-native';
 
-export default function ProfileScreen() {
+export default function SquadsScreen() {
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>👤 Gamer Profile</Text>
+      <Text style={styles.text}>👥 Your Squads</Text>
     </View>
   );
 }

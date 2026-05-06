@@ -1,5 +1,7 @@
-import HomeScreen from './src/features/gaming/screens/HomeScreen';
+import 'react-native-gesture-handler';
+
+import BottomTabs from './BottomTabs';
 
 export default function App() {
-  return <HomeScreen />;
+  return <BottomTabs />;
 }
