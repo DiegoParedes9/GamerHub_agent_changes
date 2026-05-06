@@ -1,27 +1,49 @@
-const COLORS = {
-  background: '#070B14',
+import {
+  ScrollView,
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+} from 'react-native';
 
-  card: '#111827',
+import { squads } from '../data/squads';
 
-  neonBlue: '#38BDF8',
-  neonPurple: '#8B5CF6',
-
-  text: '#FFFFFF',
-  muted: '#94A3B8',
-
-  border: '#1E293B',
-};
-import { View, Text, StyleSheet } from 'react-native';
-
-
+import SquadCard from '../components/SquadCard';
 
 export default function SquadsScreen() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.text}>
-        👥 Your Squads
-      </Text>
-    </View>
+    <ScrollView style={styles.container}>
+
+      <View style={styles.header}>
+
+        <View>
+
+          <Text style={styles.title}>
+            Squads
+          </Text>
+
+          <Text style={styles.subtitle}>
+            Manage your gaming teams
+          </Text>
+
+        </View>
+
+        <TouchableOpacity style={styles.createButton}>
+          <Text style={styles.createText}>
+            +
+          </Text>
+        </TouchableOpacity>
+
+      </View>
+
+      {squads.map((squad) => (
+        <SquadCard
+          key={squad.id}
+          squad={squad}
+        />
+      ))}
+
+    </ScrollView>
   );
 }
 
@@ -29,17 +51,60 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
 
-    backgroundColor: COLORS.background,
+    backgroundColor: '#070B14',
+
+    paddingHorizontal: 20,
+  },
+
+  header: {
+    marginTop: 60,
+
+    flexDirection: 'row',
+
+    justifyContent: 'space-between',
+
+    alignItems: 'center',
+
+    marginBottom: 30,
+  },
+
+  title: {
+    color: '#fff',
+
+    fontSize: 34,
+
+    fontWeight: 'bold',
+  },
+
+  subtitle: {
+    color: '#94A3B8',
+
+    marginTop: 6,
+  },
+
+  createButton: {
+    width: 55,
+    height: 55,
+
+    borderRadius: 30,
+
+    backgroundColor: '#8B5CF6',
 
     justifyContent: 'center',
 
     alignItems: 'center',
+
+    shadowColor: '#8B5CF6',
+
+    shadowOpacity: 0.8,
+
+    shadowRadius: 12,
   },
 
-  text: {
-    color: COLORS.text,
+  createText: {
+    color: '#fff',
 
-    fontSize: 26,
+    fontSize: 30,
 
     fontWeight: 'bold',
   },
