@@ -1,15 +1,13 @@
-export const colors = {
-  background: '#0B1120',
-  card: '#151E2E',
-  primary: '#38BDF8',
-  secondary: '#8B5CF6',
+export const COLORS = {
+  background: '#070B14',
+
+  card: '#111827',
+
+  neonBlue: '#38BDF8',
+  neonPurple: '#8B5CF6',
+
   text: '#FFFFFF',
   muted: '#94A3B8',
-  success: '#22C55E',
-};
 
-export const spacing = {
-  sm: 8,
-  md: 16,
-  lg: 24,
+  border: '#1E293B',
 };
